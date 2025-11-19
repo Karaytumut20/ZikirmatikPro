@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.umutkaraytu.ZikirmatikPro",
+      "infoPlist": {
+        "NSUserTrackingUsageDescription": "Bu uygulama, size kişiselleştirilmiş reklamlar sunmak için izninizi ister."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -38,6 +42,13 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-4816381866965413~2263570400",
+          "iosAppId": "ca-app-pub-4816381866965413~2263570400"
         }
       ]
     ],
