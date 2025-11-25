@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -267,7 +267,6 @@ export default function HomeScreen() {
             </Animated.View>
           </TouchableWithoutFeedback>
           
-          <Text style={styles.tapHint}>Zikir çekmek için dokun</Text>
         </View>
 
       </View>
@@ -692,6 +691,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: BG_COLOR, // Arkaplanla uyumlu
-    paddingVertical: 5,
+    paddingVertical: 50,
   }
 });
