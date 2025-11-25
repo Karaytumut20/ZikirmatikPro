@@ -27,16 +27,31 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-// ADMOB İMPORTLARI
-import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
+// --- ADMOB IMPORTLARI ---
+import {
+  AdEventType,
+  BannerAd,
+  BannerAdSize,
+  InterstitialAd,
+  TestIds
+} from 'react-native-google-mobile-ads';
 
 const { width, height } = Dimensions.get('window');
 
 // --- REKLAM KİMLİKLERİ ---
-// Geliştirme modunda test ID, gerçekte senin ID'n kullanılır
+// DİKKAT: Kendi ID'lerinle değiştirmeyi unutma!
 const adUnitId = __DEV__ 
   ? TestIds.BANNER 
-  : 'ca-app-pub-4816381866965413/3869006552';
+  : 'ca-app-pub-4816381866965413/3869006552'; 
+
+const interstitialId = __DEV__
+  ? TestIds.INTERSTITIAL
+  : 'ca-app-pub-4816381866965413/GEÇİŞ_REKLAM_ID_BURAYA'; 
+
+// Geçiş reklamı nesnesi
+const interstitial = InterstitialAd.createForAdRequest(interstitialId, {
+  requestNonPersonalizedAdsOnly: true,
+});
 
 // --- SABİTLER VE RENKLER ---
 const THEME_COLOR = '#0d9488'; // Teal-600
@@ -58,7 +73,7 @@ const PRESET_ZIKIRS = [
   { id: 9, title: "Hasbunallah", target: 450 },
 ];
 
-// --- KONFETİ PARÇACIĞI BİLEŞENİ ---
+// --- KONFETİ PARÇACIĞI ---
 const ConfettiPiece = ({ index, active }: { index: number, active: boolean }) => {
   const randomX = Math.random() * width;
   const randomDelay = Math.random() * 500;
@@ -112,13 +127,32 @@ export default function HomeScreen() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [triggerConfetti, setTriggerConfetti] = useState(false);
 
+  const [interstitialLoaded, setInterstitialLoaded] = useState(false);
+
   // Animasyon Değerleri
   const buttonScale = useSharedValue(1);
   const progressHeight = useSharedValue(0);
 
-  // --- BAŞLANGIÇ ---
+  // --- BAŞLANGIÇ VE REKLAM YÖNETİMİ ---
   useEffect(() => {
     loadData();
+
+    const unsubscribeLoaded = interstitial.addAdEventListener(AdEventType.LOADED, () => {
+      setInterstitialLoaded(true);
+    });
+
+    const unsubscribeClosed = interstitial.addAdEventListener(AdEventType.CLOSED, () => {
+      setInterstitialLoaded(false);
+      interstitial.load(); // Kapanınca yenisini yükle
+      startCelebration(); // Kutlamayı başlat
+    });
+
+    interstitial.load();
+
+    return () => {
+      unsubscribeLoaded();
+      unsubscribeClosed();
+    };
   }, []);
 
   useEffect(() => {
@@ -166,7 +200,11 @@ export default function HomeScreen() {
     }
 
     if (target > 0 && newCount % target === 0) {
-      startCelebration();
+      if (interstitialLoaded) {
+        interstitial.show();
+      } else {
+        startCelebration();
+      }
     }
   };
 
@@ -266,7 +304,6 @@ export default function HomeScreen() {
               </View>
             </Animated.View>
           </TouchableWithoutFeedback>
-          
         </View>
 
       </View>
@@ -385,11 +422,11 @@ export default function HomeScreen() {
          </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- REKLAM ALANI (GOOGLE ADMOB) --- */}
+      {/* --- REKLAM ALANI (MUTLAK KONUMLANDIRMA) --- */}
       <View style={styles.adContainer}>
         <BannerAd
           unitId={adUnitId}
-          size={BannerAdSize.BANNER}
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
           requestOptions={{
             requestNonPersonalizedAdsOnly: true,
           }}
@@ -440,7 +477,8 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-evenly',
     alignItems: 'center',
-    paddingBottom: 40,
+    // REKLAM İÇİN ALTTA BOŞLUK BIRAKTIK
+    paddingBottom: 130, 
   },
   card: {
     width: width * 0.85,
@@ -458,7 +496,7 @@ const styles = StyleSheet.create({
   screen: {
     width: '100%',
     height: 100,
-    backgroundColor: '#94a3b8', // LCD Background
+    backgroundColor: '#94a3b8',
     borderRadius: 15,
     borderWidth: 4,
     borderColor: '#475569',
@@ -506,7 +544,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 1,
   },
-  // YAN PROGRESS BAR
   sideProgressContainer: {
     position: 'absolute',
     right: 10,
@@ -523,7 +560,6 @@ const styles = StyleSheet.create({
     backgroundColor: THEME_COLOR,
     borderRadius: 3,
   },
-  // BUTON
   buttonArea: {
     alignItems: 'center',
     gap: 20,
@@ -557,7 +593,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     opacity: 0.8,
   },
-  // MODAL ORTAK STİLLER
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -585,7 +620,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1f2937',
   },
-  // LİSTE ÖĞELERİ
   presetItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -603,7 +637,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
   },
-  // AYARLAR ÖĞELERİ
   settingItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -637,7 +670,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  // CELEBRATION MODAL
   celebrationOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -676,7 +708,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  // KONFETİ
   confetti: {
     position: 'absolute',
     top: 0,
@@ -685,12 +716,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     zIndex: 999,
   },
-  // REKLAM KUTUSU
+  // REKLAM KUTUSU - GÜNCELLENMİŞ KISIM
   adContainer: {
+    position: 'absolute', // Ekranın akışından bağımsız
+    bottom: 0,            // En alta sabitle
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: BG_COLOR, // Arkaplanla uyumlu
-    paddingVertical: 50,
+    backgroundColor: BG_COLOR, 
+    paddingTop: 10,
+    paddingBottom: '13%', // iPhone Home Indicator için ekstra boşluk
+    zIndex: 9999,         // Her şeyin üzerinde dursun
+    elevation: 10,        // Android gölge katmanı
   }
 });
