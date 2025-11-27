@@ -12,7 +12,12 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      // AŞAĞIDAKİ KISIM EKLENDİ:
+      "android": {
+        "buildType": "app-bundle"
+      }
+      // -----------------------
     }
   },
   "submit": {

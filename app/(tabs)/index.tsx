@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -23,41 +24,34 @@ import Animated, {
   useSharedValue,
   withDelay,
   withRepeat,
-  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+
 // --- ADMOB IMPORTLARI ---
 import {
-  AdEventType,
   BannerAd,
   BannerAdSize,
-  InterstitialAd,
   TestIds
 } from 'react-native-google-mobile-ads';
 
+// --- SAFE AREA (GÜVENLİ ALAN) ---
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 const { width, height } = Dimensions.get('window');
 
-// --- REKLAM KİMLİKLERİ ---
-// DİKKAT: Kendi ID'lerinle değiştirmeyi unutma!
+// --- REKLAM KİMLİĞİ ---
 const adUnitId = __DEV__ 
   ? TestIds.BANNER 
   : 'ca-app-pub-4816381866965413/3869006552'; 
 
-const interstitialId = __DEV__
-  ? TestIds.INTERSTITIAL
-  : 'ca-app-pub-4816381866965413/GEÇİŞ_REKLAM_ID_BURAYA'; 
-
-// Geçiş reklamı nesnesi
-const interstitial = InterstitialAd.createForAdRequest(interstitialId, {
-  requestNonPersonalizedAdsOnly: true,
-});
-
-// --- SABİTLER VE RENKLER ---
+// --- RENK PALETİ ---
 const THEME_COLOR = '#0d9488'; // Teal-600
 const BG_COLOR = '#111827'; // Gray-900
 const CARD_BG = '#1f2937'; // Gray-800
-const TEXT_COLOR = '#f3f4f6'; // Gray-100
+const ITEM_BG = '#374151'; // Gray-700
+const TEXT_COLOR = '#f3f4f6'; 
+const TEXT_SUB = '#9ca3af'; 
 const CONFETTI_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 
 // --- HAZIR ZİKİR LİSTESİ ---
@@ -73,7 +67,7 @@ const PRESET_ZIKIRS = [
   { id: 9, title: "Hasbunallah", target: 450 },
 ];
 
-// --- KONFETİ PARÇACIĞI ---
+// --- KONFETİ BİLEŞENİ ---
 const ConfettiPiece = ({ index, active }: { index: number, active: boolean }) => {
   const randomX = Math.random() * width;
   const randomDelay = Math.random() * 500;
@@ -87,37 +81,28 @@ const ConfettiPiece = ({ index, active }: { index: number, active: boolean }) =>
     if (active) {
       translateY.value = -50;
       opacity.value = 1;
-      
-      translateY.value = withDelay(randomDelay, withTiming(height + 50, { 
-        duration: randomDuration,
-        easing: Easing.linear
-      }));
-      
+      translateY.value = withDelay(randomDelay, withTiming(height + 50, { duration: randomDuration, easing: Easing.linear }));
       rotate.value = withDelay(randomDelay, withRepeat(withTiming(360, { duration: 1000 }), -1));
-      
       opacity.value = withDelay(randomDelay + randomDuration - 500, withTiming(0, { duration: 500 }));
     }
   }, [active]);
 
   const style = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: randomX },
-      { translateY: translateY.value },
-      { rotate: `${rotate.value}deg` }
-    ],
+    transform: [{ translateX: randomX }, { translateY: translateY.value }, { rotate: `${rotate.value}deg` }],
     opacity: opacity.value,
     backgroundColor: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
   }));
 
   if (!active) return null;
-
   return <Animated.View style={[styles.confetti, style]} />;
 };
 
 // --- ANA EKRAN ---
 export default function HomeScreen() {
-  // --- STATE'LER ---
+  const insets = useSafeAreaInsets(); // Çentik ve alt çizgi paylarını alır
+
   const [count, setCount] = useState(0);
+  const [totalLifetimeCount, setTotalLifetimeCount] = useState(0);
   const [target, setTarget] = useState(33);
   const [zikirTitle, setZikirTitle] = useState("Zikirmatik");
   const [isVibrationEnabled, setIsVibrationEnabled] = useState(true);
@@ -127,54 +112,33 @@ export default function HomeScreen() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [triggerConfetti, setTriggerConfetti] = useState(false);
 
-  const [interstitialLoaded, setInterstitialLoaded] = useState(false);
-
-  // Animasyon Değerleri
   const buttonScale = useSharedValue(1);
   const progressHeight = useSharedValue(0);
 
-  // --- BAŞLANGIÇ VE REKLAM YÖNETİMİ ---
-  useEffect(() => {
-    loadData();
-
-    const unsubscribeLoaded = interstitial.addAdEventListener(AdEventType.LOADED, () => {
-      setInterstitialLoaded(true);
-    });
-
-    const unsubscribeClosed = interstitial.addAdEventListener(AdEventType.CLOSED, () => {
-      setInterstitialLoaded(false);
-      interstitial.load(); // Kapanınca yenisini yükle
-      startCelebration(); // Kutlamayı başlat
-    });
-
-    interstitial.load();
-
-    return () => {
-      unsubscribeLoaded();
-      unsubscribeClosed();
-    };
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
     saveData();
-    const percent = target > 0 ? Math.min(count / target, 1) : 0;
-    progressHeight.value = withTiming(percent * 100, { duration: 300 });
-  }, [count, target, isVibrationEnabled, zikirTitle]);
+    if (target > 0) {
+      const remainder = count % target;
+      let displayValue = remainder;
+      if (count > 0 && remainder === 0) displayValue = target;
+      const percent = displayValue / target;
+      progressHeight.value = withTiming(percent * 100, { duration: 300 });
+    } else {
+      progressHeight.value = withTiming(0);
+    }
+  }, [count, target, isVibrationEnabled, zikirTitle, totalLifetimeCount]);
 
-  // --- VERİ YÖNETİMİ ---
   const loadData = async () => {
     try {
-      const [c, t, v, z] = await Promise.all([
-        AsyncStorage.getItem('zikirCount'),
-        AsyncStorage.getItem('zikirTarget'),
-        AsyncStorage.getItem('zikirVib'),
-        AsyncStorage.getItem('zikirTitle')
-      ]);
-      if (c) setCount(parseInt(c));
-      if (t) setTarget(parseInt(t));
-      if (v) setIsVibrationEnabled(v === 'true');
-      if (z) setZikirTitle(z);
-    } catch (e) { console.log(e); }
+      const values = await AsyncStorage.multiGet(['zikirCount', 'zikirTarget', 'zikirVib', 'zikirTitle', 'lifetimeCount']);
+      if (values[0][1]) setCount(parseInt(values[0][1]));
+      if (values[1][1]) setTarget(parseInt(values[1][1]));
+      if (values[2][1]) setIsVibrationEnabled(values[2][1] === 'true');
+      if (values[3][1]) setZikirTitle(values[3][1]);
+      if (values[4][1]) setTotalLifetimeCount(parseInt(values[4][1]));
+    } catch (e) {}
   };
 
   const saveData = async () => {
@@ -183,54 +147,53 @@ export default function HomeScreen() {
         ['zikirCount', count.toString()],
         ['zikirTarget', target.toString()],
         ['zikirVib', isVibrationEnabled.toString()],
-        ['zikirTitle', zikirTitle]
+        ['zikirTitle', zikirTitle],
+        ['lifetimeCount', totalLifetimeCount.toString()]
       ]);
-    } catch (e) { console.log(e); }
+    } catch (e) {}
   };
 
-  // --- İŞLEMLER ---
+  const handlePressIn = () => {
+    buttonScale.value = withSpring(0.96, { stiffness: 300, damping: 20 });
+  };
+
+  const handlePressOut = () => {
+    buttonScale.value = withSpring(1, { stiffness: 300, damping: 20 });
+  };
+
   const handlePress = () => {
-    buttonScale.value = withSequence(withSpring(0.85, { damping: 10 }), withSpring(1));
-    
+    if (count >= 999999) {
+      if (isVibrationEnabled && Platform.OS !== 'web') {
+         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); 
+      }
+      return; 
+    }
+
     const newCount = count + 1;
     setCount(newCount);
-
+    setTotalLifetimeCount(prev => prev + 1);
+    
     if (isVibrationEnabled && Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-
-    if (target > 0 && newCount % target === 0) {
-      if (interstitialLoaded) {
-        interstitial.show();
-      } else {
-        startCelebration();
-      }
-    }
+    
+    if (target > 0 && newCount % target === 0) startCelebration();
   };
 
   const startCelebration = () => {
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTriggerConfetti(true);
     setShowCelebration(true);
     setTimeout(() => setTriggerConfetti(false), 4000);
   };
 
   const handleReset = () => {
-    Alert.alert("Sıfırlama", "Sayacı sıfırlamak istediğinize emin misiniz?", [
+    Alert.alert("Sıfırla", "Mevcut sayacı sıfırlamak istiyor musun?", [
       { text: "Vazgeç", style: "cancel" },
-      { 
-        text: "Sıfırla", 
-        style: "destructive", 
-        onPress: () => {
-          setCount(0);
-          setShowSettings(false);
-          if (isVibrationEnabled && Platform.OS !== 'web') {
-             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          }
-        } 
-      }
+      { text: "Evet, Sıfırla", style: "destructive", onPress: () => {
+        setCount(0);
+        if (isVibrationEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }}
     ]);
   };
 
@@ -239,56 +202,55 @@ export default function HomeScreen() {
     setTarget(preset.target);
     setCount(0);
     setShowList(false);
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
   };
 
-  const animatedButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: buttonScale.value }]
-  }));
-
-  const animatedProgressStyle = useAnimatedStyle(() => ({
-    height: `${progressHeight.value}%`
-  }));
+  const animatedButtonStyle = useAnimatedStyle(() => ({ transform: [{ scale: buttonScale.value }] }));
+  const animatedProgressStyle = useAnimatedStyle(() => ({ height: `${progressHeight.value}%` }));
 
   return (
     <View style={styles.container}>
+      <StatusBar style="light" />
       
+      {/* --- REKLAM ALANI (EN ÜSTTE) --- */}
+      {/* paddingTop: insets.top diyerek çentik altına itiyoruz */}
+      <View style={[styles.adContainer, { paddingTop: insets.top }]}>
+        <BannerAd
+          unitId={adUnitId}
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+          onAdFailedToLoad={(error) => console.log('Ad Error:', error)}
+        />
+      </View>
+
       {triggerConfetti && Array.from({ length: 30 }).map((_, i) => (
         <ConfettiPiece key={i} index={i} active={triggerConfetti} />
       ))}
 
-      <View style={styles.topBar}>
-        <View>
-           <Text style={styles.appName}>{zikirTitle}</Text>
-           <Text style={styles.appVersion}>PRO</Text>
-        </View>
-        <View style={styles.topIcons}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => setShowList(true)}>
-            <Ionicons name="list" size={24} color={TEXT_COLOR} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
-            <Ionicons name="options" size={24} color={TEXT_COLOR} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* ÜST BAR (Reklamın altında kalmaması için marginTop verildi) */}
+      
 
+      {/* İÇERİK ALANI */}
       <View style={styles.content}>
         
+        {/* ZİKİR KARTI */}
         <View style={styles.card}>
           <View style={styles.screen}>
-             <Text style={styles.ghostNumbers}>88888</Text>
-             <Text style={styles.counter}>{count.toString().padStart(5, '0')}</Text>
+             <Text style={styles.ghostNumbers} adjustsFontSizeToFit numberOfLines={1}>888888</Text>
+             <Text style={styles.counter} adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.5}>
+               {count.toString().padStart(6, '0')}
+             </Text>
              <View style={styles.lcdGlare} />
           </View>
           
-          <View style={styles.targetInfo}>
-            <Ionicons name="flag" size={14} color="#9ca3af" />
-            <Text style={styles.targetText}>
-              {target === 0 ? "SERBEST MOD" : `HEDEF: ${target}`}
-            </Text>
+          <View style={styles.cardInfoRow}>
+            <View style={styles.infoChip}>
+              <Ionicons name="text" size={18} color={THEME_COLOR} />
+              <Text style={styles.infoText} numberOfLines={1}>{zikirTitle}</Text>
+            </View>
+            <View style={styles.infoChip}>
+              <Ionicons name="flag" size={18} color={THEME_COLOR} />
+              <Text style={styles.infoText}>{target === 0 ? "∞" : target}</Text>
+            </View>
           </View>
 
           <View style={styles.sideProgressContainer}>
@@ -296,11 +258,16 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* ANA BUTON */}
         <View style={styles.buttonArea}>
-          <TouchableWithoutFeedback onPress={handlePress}>
+          <TouchableWithoutFeedback 
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onPress={handlePress}
+          >
             <Animated.View style={[styles.mainButton, animatedButtonStyle]}>
               <View style={styles.mainButtonInner}>
-                 <Ionicons name="finger-print" size={60} color="rgba(0,0,0,0.1)" />
+                 <Ionicons name="finger-print" size={80} color="rgba(0,0,0,0.08)" />
               </View>
             </Animated.View>
           </TouchableWithoutFeedback>
@@ -308,33 +275,57 @@ export default function HomeScreen() {
 
       </View>
 
-      {/* ZİKİR LİSTESİ MODALI */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showList}
-        onRequestClose={() => setShowList(false)}
-      >
+      {/* --- ALT KONTROL PANELİ --- */}
+      {/* bottom: insets.bottom ile iPhone'daki alt çizgiden yukarıda tutuyoruz */}
+      <View style={[styles.bottomControlBar, { bottom: Math.max(insets.bottom, 20) }]}>
+         <TouchableOpacity style={styles.controlButton} onPress={() => setShowList(true)}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="list" size={22} color={TEXT_COLOR} />
+            </View>
+            <Text style={styles.controlLabel}>Listeler</Text>
+         </TouchableOpacity>
+
+         <View style={styles.divider} />
+
+         <TouchableOpacity style={styles.controlButton} onPress={handleReset}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="refresh" size={22} color="#ef4444" />
+            </View>
+            <Text style={[styles.controlLabel, { color: '#ef4444' }]}>Sıfırla</Text>
+         </TouchableOpacity>
+
+         <View style={styles.divider} />
+
+         <TouchableOpacity style={styles.controlButton} onPress={() => setShowSettings(true)}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="settings-sharp" size={22} color={TEXT_COLOR} />
+            </View>
+            <Text style={styles.controlLabel}>Ayarlar</Text>
+         </TouchableOpacity>
+      </View>
+
+      {/* MODALLAR */}
+      <Modal animationType="slide" transparent={true} visible={showList} onRequestClose={() => setShowList(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={styles.modalSheet}>
+             <View style={styles.modalHandle} />
              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Hazır Listeler</Text>
-                <TouchableOpacity onPress={() => setShowList(false)}>
-                   <Ionicons name="close" size={24} color="#333" />
+                <Text style={styles.modalTitle}>Zikir Listesi</Text>
+                <TouchableOpacity onPress={() => setShowList(false)} style={styles.closeBtn}>
+                   <Ionicons name="close" size={24} color={TEXT_COLOR} />
                 </TouchableOpacity>
              </View>
-             <ScrollView style={{ maxHeight: 400 }}>
+             <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
                 {PRESET_ZIKIRS.map((item) => (
-                  <TouchableOpacity 
-                    key={item.id} 
-                    style={styles.presetItem}
-                    onPress={() => selectPreset(item)}
-                  >
-                     <View>
-                        <Text style={styles.presetTitle}>{item.title}</Text>
-                        <Text style={styles.presetSub}>Hedef: {item.target === 0 ? 'Yok' : item.target}</Text>
-                     </View>
-                     <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                  <TouchableOpacity key={item.id} style={styles.presetCard} onPress={() => selectPreset(item)}>
+                      <View style={styles.presetIconBox}>
+                        <Ionicons name="bookmark" size={20} color={THEME_COLOR} />
+                      </View>
+                      <View style={{flex:1}}>
+                         <Text style={styles.presetTitle}>{item.title}</Text>
+                         <Text style={styles.presetSub}>Hedef: {item.target === 0 ? 'Serbest' : item.target}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color={TEXT_SUB} />
                   </TouchableOpacity>
                 ))}
              </ScrollView>
@@ -342,96 +333,64 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* KUTLAMA MODALI */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showCelebration}
-        onRequestClose={() => setShowCelebration(false)}
-      >
-        <View style={styles.celebrationOverlay}>
-          <View style={styles.celebrationCard}>
-             <Ionicons name="trophy" size={60} color="#fbbf24" />
-             <Text style={styles.celebrationTitle}>Maşallah!</Text>
-             <Text style={styles.celebrationText}>{target} sayısına ulaştın.</Text>
-             <TouchableOpacity 
-               style={styles.celebrationButton} 
-               onPress={() => setShowCelebration(false)}
-             >
-               <Text style={styles.celebrationButtonText}>Devam Et</Text>
-             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* AYARLAR MODALI */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showSettings}
-        onRequestClose={() => setShowSettings(false)}
-      >
-         <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+      <Modal animationType="slide" transparent={true} visible={showSettings} onRequestClose={() => setShowSettings(false)}>
+         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.modalOverlay}>
-               <View style={styles.modalCard}>
+               <View style={styles.modalSheet}>
+                  <View style={styles.modalHandle} />
                   <View style={styles.modalHeader}>
                      <Text style={styles.modalTitle}>Ayarlar</Text>
-                     <TouchableOpacity onPress={() => setShowSettings(false)}>
-                        <Ionicons name="close" size={24} color="#333" />
+                     <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.closeBtn}>
+                        <Ionicons name="close" size={24} color={TEXT_COLOR} />
                      </TouchableOpacity>
                   </View>
 
-                  <View style={styles.settingItem}>
-                     <Text style={styles.settingLabel}>Başlık</Text>
-                     <TextInput 
-                        style={styles.textInput}
-                        value={zikirTitle}
-                        onChangeText={setZikirTitle}
-                        placeholder="Örn: Ya Sabır"
-                     />
-                  </View>
-
-                  <View style={styles.settingItem}>
+                  <View style={styles.settingRow}>
                      <Text style={styles.settingLabel}>Hedef Sayısı</Text>
                      <TextInput 
-                        style={[styles.textInput, { width: 80, textAlign: 'center' }]}
+                        style={[styles.darkInput, { width: 100, textAlign: 'center' }]}
                         keyboardType="number-pad"
                         value={target.toString()}
                         onChangeText={(t) => {
                            const val = parseInt(t);
-                           if (!isNaN(val) && val >= 0) setTarget(val);
-                           else if (t === '') setTarget(0);
+                           setTarget(isNaN(val) ? 0 : val);
                         }}
                      />
                   </View>
 
-                  <View style={styles.settingItem}>
+                  <View style={styles.settingRow}>
                      <Text style={styles.settingLabel}>Titreşim</Text>
                      <Switch 
                         value={isVibrationEnabled} 
                         onValueChange={setIsVibrationEnabled}
-                        trackColor={{ true: THEME_COLOR }}
+                        trackColor={{ false: '#4b5563', true: THEME_COLOR }}
+                        thumbColor="#f3f4f6"
                      />
                   </View>
 
-                  <TouchableOpacity style={styles.resetButtonFull} onPress={handleReset}>
-                     <Text style={styles.resetButtonText}>Sayacı Sıfırla</Text>
-                  </TouchableOpacity>
+                  <View style={styles.statsContainer}>
+                     <Text style={styles.statsLabel}>GENEL TOPLAM</Text>
+                     <Text style={styles.statsValue}>{totalLifetimeCount.toLocaleString()}</Text>
+                     <Text style={styles.statsSub}>Uygulama yüklendiğinden beri çekilen zikir</Text>
+                  </View>
+                  
                </View>
             </View>
          </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- REKLAM ALANI (MUTLAK KONUMLANDIRMA) --- */}
-      <View style={styles.adContainer}>
-        <BannerAd
-          unitId={adUnitId}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
-        />
-      </View>
+      <Modal animationType="fade" transparent={true} visible={showCelebration} onRequestClose={() => setShowCelebration(false)}>
+        <View style={styles.celebrationOverlay}>
+          <View style={styles.celebrationCard}>
+             <Ionicons name="trophy" size={60} color="#fbbf24" />
+             <Text style={styles.celebrationTitle}>Maşallah!</Text>
+             <Text style={styles.celebrationText}>{target} sayısına ulaştın.</Text>
+             <TouchableOpacity style={styles.celebrationButton} onPress={() => setShowCelebration(false)}>
+               <Text style={styles.celebrationButtonText}>Devam Et</Text>
+             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
     </View>
   );
@@ -442,9 +401,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BG_COLOR,
   },
-  // TOP BAR
+  // REKLAM ALANI (EN ÜSTTE)
+  adContainer: {
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: BG_COLOR, 
+    zIndex: 9999,
+    paddingBottom: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  // TOP BAR (Reklamdan sonra gelir)
   topBar: {
-    marginTop: 50,
+    marginTop: 10, // Reklamın hemen altına biraz boşluk
     paddingHorizontal: 25,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -467,35 +436,28 @@ const styles = StyleSheet.create({
     color: THEME_COLOR,
     letterSpacing: 3,
   },
-  iconButton: {
-    padding: 8,
-    backgroundColor: CARD_BG,
-    borderRadius: 12,
-  },
-  // CONTENT
   content: {
     flex: 1,
-    justifyContent: 'space-evenly',
+    justifyContent: 'center', 
     alignItems: 'center',
-    // REKLAM İÇİN ALTTA BOŞLUK BIRAKTIK
-    paddingBottom: 130, 
+    paddingBottom: 100, // Alt menü için yer
+    gap: 40,
   },
   card: {
     width: width * 0.85,
     backgroundColor: CARD_BG,
     borderRadius: 30,
-    padding: 25,
+    padding: 20,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
     shadowRadius: 20,
     elevation: 10,
-    position: 'relative',
   },
   screen: {
     width: '100%',
-    height: 100,
+    height: 120, 
     backgroundColor: '#94a3b8',
     borderRadius: 15,
     borderWidth: 4,
@@ -517,32 +479,43 @@ const styles = StyleSheet.create({
   },
   counter: {
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    fontSize: 64,
+    fontSize: 70, 
     color: '#111827',
     fontWeight: '700',
     zIndex: 2,
+    width: '100%',
+    textAlign: 'right',
   },
   ghostNumbers: {
     position: 'absolute',
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    fontSize: 64,
+    fontSize: 70,
     color: '#111827',
     opacity: 0.05,
     right: 20,
-    zIndex: 1,
+    width: '100%',
+    textAlign: 'right',
   },
-  targetInfo: {
+  cardInfoRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 5,
+  },
+  infoChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    marginLeft: 10,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    gap: 5,
+    maxWidth: '60%',
   },
-  targetText: {
-    color: '#9ca3af',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1,
+  infoText: {
+    color: TEXT_SUB,
+    fontSize: 15,
+    fontWeight: '800',
   },
   sideProgressContainer: {
     position: 'absolute',
@@ -562,171 +535,215 @@ const styles = StyleSheet.create({
   },
   buttonArea: {
     alignItems: 'center',
-    gap: 20,
   },
   mainButton: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#e5e7eb',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#374151',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
     elevation: 15,
   },
   mainButtonInner: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: '#f9fafb',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#1f2937',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: '#4b5563',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tapHint: {
-    color: '#6b7280',
-    fontSize: 12,
-    letterSpacing: 1,
-    opacity: 0.8,
+  // KONTROL PANELİ
+  bottomControlBar: {
+    position: 'absolute',
+    // bottom değeri artık dinamik
+    left: 20,
+    right: 20,
+    height: 70,
+    backgroundColor: CARD_BG,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  controlButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+  iconCircle: {
+    marginBottom: 2,
+  },
+  controlLabel: {
+    color: TEXT_SUB,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  divider: {
+    width: 1,
+    height: '40%',
+    backgroundColor: '#374151',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
   },
-  modalCard: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
+  modalSheet: {
+    backgroundColor: CARD_BG,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     padding: 25,
     paddingBottom: 50,
     maxHeight: '70%',
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#4b5563',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-    paddingBottom: 10,
+    marginBottom: 25,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: TEXT_COLOR,
   },
-  presetItem: {
+  closeBtn: {
+    padding: 5,
+    backgroundColor: ITEM_BG,
+    borderRadius: 50,
+  },
+  presetCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    backgroundColor: ITEM_BG,
+    padding: 15,
+    borderRadius: 15,
+    marginBottom: 10,
+  },
+  presetIconBox: {
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(13, 148, 136, 0.2)', 
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
   },
   presetTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: 'bold',
+    color: TEXT_COLOR,
   },
   presetSub: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: TEXT_SUB,
+    marginTop: 2,
   },
-  settingItem: {
+  settingRow: {
+    marginBottom: 25,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
   },
   settingLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
+    color: TEXT_COLOR,
   },
-  textInput: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 10,
-    paddingHorizontal: 15,
+  darkInput: {
+    backgroundColor: ITEM_BG,
+    color: TEXT_COLOR,
     paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 10,
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1f2937',
-    minWidth: 50,
+    minWidth: 60,
   },
-  resetButtonFull: {
-    backgroundColor: '#fee2e2',
-    padding: 15,
-    borderRadius: 15,
+  statsContainer: {
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    padding: 20,
+    borderRadius: 20,
     alignItems: 'center',
     marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#374151',
   },
-  resetButtonText: {
-    color: '#ef4444',
+  statsLabel: {
+    color: TEXT_SUB,
+    fontSize: 12,
     fontWeight: 'bold',
-    fontSize: 16,
+    letterSpacing: 1,
+    marginBottom: 5,
+  },
+  statsValue: {
+    color: THEME_COLOR,
+    fontSize: 32,
+    fontWeight: 'bold',
+  },
+  statsSub: {
+    color: '#6b7280',
+    fontSize: 10,
+    marginTop: 5,
   },
   celebrationOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   celebrationCard: {
-    backgroundColor: '#fff',
+    backgroundColor: CARD_BG,
     width: width * 0.8,
     borderRadius: 25,
     padding: 30,
     alignItems: 'center',
     elevation: 20,
+    borderWidth: 1,
+    borderColor: '#374151',
   },
   celebrationTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#d97706',
+    color: '#fbbf24',
     marginTop: 15,
-    marginBottom: 5,
   },
   celebrationText: {
     fontSize: 16,
-    color: '#4b5563',
-    textAlign: 'center',
-    marginBottom: 25,
+    color: TEXT_SUB,
+    marginVertical: 10,
   },
   celebrationButton: {
     backgroundColor: THEME_COLOR,
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 25,
+    marginTop: 10,
   },
-  celebrationButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  confetti: {
-    position: 'absolute',
-    top: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    zIndex: 999,
-  },
-  // REKLAM KUTUSU - GÜNCELLENMİŞ KISIM
-  adContainer: {
-    position: 'absolute', // Ekranın akışından bağımsız
-    bottom: 0,            // En alta sabitle
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: BG_COLOR, 
-    paddingTop: 10,
-    paddingBottom: '13%', // iPhone Home Indicator için ekstra boşluk
-    zIndex: 9999,         // Her şeyin üzerinde dursun
-    elevation: 10,        // Android gölge katmanı
-  }
+  celebrationButtonText: { color: '#fff', fontWeight: 'bold' },
+  confetti: { position: 'absolute', width: 10, height: 10, borderRadius: 5, zIndex: 999 },
 });
